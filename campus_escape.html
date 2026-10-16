@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>NRI Institute of Technology — Campus Escape</title>
+<style>
+:root{--ink:#173329;--sun:#fff4c7;--panel:rgba(255,255,255,.94)}
+*{box-sizing:border-box} body{margin:0;background:linear-gradient(135deg,#f9edb5,#e7f3c8);font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);overflow:hidden}
+#app{height:100dvh;display:flex;flex-direction:column;max-width:1000px;margin:auto}
+header{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 12px;background:#fff9e6;border-bottom:2px solid #d7c98d;z-index:2}
+h1{font-size:clamp(14px,3vw,20px);margin:0} .sub{font-size:11px;opacity:.8}
+button{border:1px solid #a9b99d;background:#fff;border-radius:12px;padding:8px 10px;font-weight:700;color:#234636;box-shadow:0 2px 0 #c7d0b9}
+#hud{display:flex;gap:8px;align-items:center;font-size:12px;flex-wrap:wrap;padding:6px 10px;background:#f8f5d9;z-index:2}
+.pill{background:white;border:1px solid #d7dfbd;border-radius:20px;padding:5px 9px;white-space:nowrap}
+#stage{position:relative;flex:1;min-height:0;overflow:hidden;background:#cfe6a5}
+canvas{width:100%;height:100%;display:block;touch-action:none}
+#mini{position:absolute;top:9px;left:9px;width:108px;height:142px;border:2px solid #fff;border-radius:10px;background:#f5f0d1eF;box-shadow:0 3px 12px #425c3440;z-index:1}
+#miniLabel{position:absolute;top:154px;left:11px;font-size:10px;background:#fff9;border-radius:5px;padding:2px 5px}
+#joystick{position:absolute;right:18px;left:auto;bottom:20px;width:112px;height:112px;border-radius:50%;background:#ffffff70;border:2px solid #ffffffbb;touch-action:none;z-index:3}
+#stick{position:absolute;left:31px;top:31px;width:46px;height:46px;border-radius:50%;background:#2d6958cc;border:2px solid #fff;box-shadow:0 2px 8px #2339}
+#rightControls{position:absolute;left:12px;right:auto;bottom:20px;display:flex;flex-direction:column;gap:8px;z-index:3}
+#rightControls button{background:#fffde8d9}
+#toast{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:#fffef0;border:2px solid #6f9464;border-radius:18px;padding:20px;max-width:85%;width:340px;text-align:center;box-shadow:0 8px 30px #1d382c55;z-index:5}
+#toast h2{margin:0 0 8px;font-size:23px} #toast p{font-size:14px;line-height:1.45}
+#toast button{background:#e0f1c5;padding:10px 16px}
+.meme{font-size:clamp(19px,5vw,25px);font-weight:950;color:#a33a17;background:#fff0bf;border:2px solid #e7a63d;border-radius:12px;padding:10px;margin:10px 0;text-shadow:0 1px #fff}
+.meme.win{color:#176b4c;background:#e4f8e8;border-color:#75bd8b}
+.hidden{display:none!important}
+footer{padding:5px 10px;text-align:center;font-size:10px;background:#fff9e6}
+@media(min-width:650px){#joystick{width:126px;height:126px}#stick{left:36px;top:36px}}
+</style></head>
+<body><div id="app">
+<header><div><h1>NRI INSTITUTE OF TECHNOLOGY</h1><div class="sub">CAMPUS ESCAPE V6 · Sneak out before you're spotted!</div></div><button id="soundBtn">♫ Sound: ON</button></header>
+<div id="hud"><span class="pill" id="level">Level 1</span><span class="pill" id="timer">Time: 0.0s</span><span class="pill" id="best">Best: —</span><span class="pill" id="status">Reach any exit</span></div>
+<div id="stage"><canvas id="game"></canvas><canvas id="mini"></canvas><div id="miniLabel">Campus mini-map</div>
+<div id="joystick" aria-label="Movement joystick"><div id="stick"></div></div>
+<div id="rightControls"><button id="zoomIn">＋ Zoom</button><button id="zoomOut">－ Zoom</button><button id="resetView">Fit map</button></div>
+<div id="toast"><h2>Campus Escape</h2><p>Start at the entrance gate, avoid A.O. Sir, HOD Sir, Rehm Sir and the security guards, then reach <b>any of the 3 exits</b>. Faster escapes earn a better score.</p><p>Use the right-side on-screen joystick or WASD / arrow keys. Zoom and Fit map controls are on the left. Avoid the detection rings and the moving security guards at every exit. Sound includes a looping theme and escape/caught cues.</p><button id="startBtn">Start Level 1</button></div>
+</div><footer>Campus Escape V6 · Offline gameplay · Moving exit patrols · Original synthesized theme and sound cues.</footer>
+</div>
+<script>
+(()=> {
+const canvas=document.getElementById('game'), ctx=canvas.getContext('2d'), mini=document.getElementById('mini'), mctx=mini.getContext('2d');
+const stage=document.getElementById('stage'), toast=document.getElementById('toast');
+const W=800,H=1200; let dpr=1, camScale=0.65, camX=0,camY=0, panX=0,panY=0, dragPan=false, dragStart=null, running=false, started=false, startTime=0, elapsed=0, level=1, soundOn=true, audio=null, lastWhistle=0, winBest=Infinity;
+const player={x:400,y:1175,r:15,speed:210};
+const exits=[{x:80,y:60,w:100,h:35,n:'EXIT 1'},{x:550,y:55,w:100,h:35,n:'EXIT 2'},{x:710,y:690,w:35,h:100,n:'EXIT 3'}];
+const buildings=[
+{x:28,y:790,w:125,h:155,n:'SPORTS / GYM'},{x:28,y:965,w:58,h:112,n:'F BLOCK'},{x:90,y:965,w:63,h:112,n:'LIBRARY'},
+{x:170,y:1010,w:130,h:78,n:'CANTEEN'},{x:475,y:990,w:190,h:130,n:'B BLOCK'},
+{x:585,y:745,w:170,h:195,n:'C BLOCK'},{x:585,y:475,w:160,h:205,n:'A BLOCK'},
+{x:570,y:185,w:175,h:200,n:'DIPLOMA BLOCK'},{x:30,y:500,w:135,h:210,n:'SHEDS'}
+];
+const grounds=[{x:270,y:180,w:265,h:180,n:'CRICKET GROUND',ellipse:true},{x:250,y:400,w:310,h:355,n:'VOLLEYBALL COURT'},{x:175,y:835,w:205,h:105,n:'GARDEN'},{x:390,y:400,w:130,h:95,n:'HIGH JUMP (SAND)'}];
+const trees=[]; for(let y=220;y<760;y+=35){trees.push({x:205+(Math.sin(y)*8),y});} for(let x=260;x<560;x+=34)trees.push({x,y:755+Math.sin(x)*4}); for(let y=430;y<730;y+=36)trees.push({x:180,y});
+const guards=[{name:'A.O. SIR',x:650,y:805,baseX:650,baseY:805,phase:0,range:115,sight:76,color:'#8c4e9c'},{name:'HOD SIR',x:520,y:600,baseX:520,baseY:600,phase:2,range:100,sight:70,color:'#c76b35'},{name:'REHM SIR',x:550,y:335,baseX:550,baseY:335,phase:4,range:100,sight:68,color:'#b84d48'}];
+const security=[{x:250,y:410},{x:555,y:780},{x:175,y:825},{x:650,y:690}];
+// Moving security patrols guard the approach to every exit.
+const exitPatrols=[
+ {name:'SECURITY 1',x:125,y:115,baseX:125,baseY:115,phase:0,range:42,sight:38,color:'#37474f',isSecurity:true},
+ {name:'SECURITY 2',x:600,y:112,baseX:600,baseY:112,phase:1.8,range:45,sight:40,color:'#37474f',isSecurity:true},
+ {name:'SECURITY 3',x:690,y:730,baseX:690,baseY:730,phase:3.4,range:35,sight:40,color:'#37474f',isSecurity:true}
+];
+const extraStaffNames=['RAKESH SIR','PT SIR','VENKAT SIR','PRINCIPAL SIR','DISCIPLINE SIR'];
+const barriers=[{x:765,y:650,w:35,h:410}]; // closes the shortcut behind C Block
+let musicStep=0;
+const keys={}; let joy={x:0,y:0}, joyActive=false, last=performance.now();
+function resize(){const r=stage.getBoundingClientRect();dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(r.width*dpr);canvas.height=Math.round(r.height*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);fitCam();mini.width=216;mini.height=284;drawMini();}
+function fitCam(){const r=stage.getBoundingClientRect();camScale=Math.min(r.width/W,r.height/H)*1.35;panX=0;panY=0;updateCamera();}
+function updateCamera(){const r=world();camX=r.w/2-player.x*camScale+panX;camY=r.h/2-player.y*camScale+panY;}
+function world(){const r=stage.getBoundingClientRect();return {w:r.width,h:r.height}}
+function rect(x,y,w,h,fill,stroke='#67865d'){ctx.fillStyle=fill;ctx.strokeStyle=stroke;ctx.lineWidth=2;ctx.beginPath();ctx.roundRect(x,y,w,h,7);ctx.fill();ctx.stroke()}
+function text(t,x,y,size=14,color='#244b38',align='center'){ctx.fillStyle=color;ctx.font=`800 ${size}px system-ui`;ctx.textAlign=align;ctx.textBaseline='middle';ctx.fillText(t,x,y)}
+function drawTree(t){ctx.fillStyle='#6eaa53';ctx.beginPath();ctx.arc(t.x,t.y,11,0,Math.PI*2);ctx.fill();ctx.fillStyle='#3d874d';ctx.beginPath();ctx.arc(t.x-3,t.y-3,6,0,Math.PI*2);ctx.fill();ctx.fillStyle='#805d39';ctx.fillRect(t.x-2,t.y+6,4,8)}
+function drawRoads(){ctx.lineCap='round';ctx.strokeStyle='#d7d4b5';ctx.lineWidth=45;ctx.beginPath();ctx.moveTo(80,1080);ctx.lineTo(80,820);ctx.lineTo(210,820);ctx.lineTo(210,380);ctx.lineTo(300,380);ctx.lineTo(300,140);ctx.moveTo(80,820);ctx.lineTo(700,820);ctx.lineTo(700,700);ctx.lineTo(700,410);ctx.lineTo(650,410);ctx.lineTo(650,100);ctx.moveTo(210,820);ctx.lineTo(210,1060);ctx.lineTo(355,1060);ctx.moveTo(400,1120);ctx.lineTo(400,1060);ctx.lineTo(400,950);ctx.lineTo(560,950);ctx.moveTo(560,920);ctx.lineTo(560,700);ctx.lineTo(700,700);ctx.stroke();
+ctx.strokeStyle='#fff9dd';ctx.lineWidth=2;ctx.setLineDash([14,12]);ctx.stroke();ctx.setLineDash([])}
+function drawBuilding(b){
+ // Soft cast shadow and visible raised right/front faces create a simple 3D campus look.
+ const d=13;
+ ctx.fillStyle='rgba(45,66,39,.22)';ctx.beginPath();ctx.roundRect(b.x+8,b.y+12,b.w+12,b.h+12,8);ctx.fill();
+ ctx.fillStyle='#b9a078';ctx.beginPath();ctx.moveTo(b.x+b.w,b.y);ctx.lineTo(b.x+b.w+d,b.y-d);ctx.lineTo(b.x+b.w+d,b.y+b.h-d);ctx.lineTo(b.x+b.w,b.y+b.h);ctx.closePath();ctx.fill();
+ ctx.fillStyle='#c9ad78';ctx.beginPath();ctx.moveTo(b.x,b.y+b.h);ctx.lineTo(b.x+d,b.y+b.h-d);ctx.lineTo(b.x+b.w+d,b.y+b.h-d);ctx.lineTo(b.x+b.w,b.y+b.h);ctx.closePath();ctx.fill();
+ rect(b.x,b.y,b.w,b.h,'#f0dfb5','#927650');
+ ctx.fillStyle='#d6c49b';ctx.fillRect(b.x+7,b.y+7,b.w-14,Math.max(8,Math.min(16,b.h*.08)));
+ // windows along the top-facing walls
+ const count=Math.max(2,Math.floor(b.w/28));
+ for(let i=0;i<count;i++){let wx=b.x+12+i*((b.w-24)/count);ctx.fillStyle='#9bc6cb';ctx.fillRect(wx,b.y+25,7,7);ctx.fillRect(wx,b.y+b.h-17,7,7)}
+ text(b.n,b.x+b.w/2,b.y+b.h/2, b.n.length>12?11:15,'#4e432f');
+}
+function drawMap(){ctx.fillStyle='#cde7a6';ctx.fillRect(0,0,W,H);
+ // sunny glow
+ let g=ctx.createRadialGradient(80,40,10,80,40,600);g.addColorStop(0,'#fff9c9aa');g.addColorStop(1,'#fff9c900');ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+ // grass texture
+ for(let i=0;i<90;i++){let x=(i*137)%W,y=(i*223)%H;ctx.fillStyle='#b6d99466';ctx.fillRect(x,y,10,2)}
+ drawRoads();
+ grounds.forEach(o=>{if(o.ellipse){ctx.fillStyle='#a5d58b';ctx.strokeStyle='#5e9857';ctx.lineWidth=3;ctx.beginPath();ctx.ellipse(o.x+o.w/2,o.y+o.h/2,o.w/2,o.h/2,0,0,Math.PI*2);ctx.fill();ctx.stroke();text(o.n,o.x+o.w/2,o.y+o.h/2,17)}else{rect(o.x,o.y,o.w,o.h,o.n.includes('HIGH')?'#d9c28c':'#a9d58d');if(o.n.includes('VOLLEY')){ctx.strokeStyle='#f8f5dd';ctx.lineWidth=2;ctx.strokeRect(o.x+20,o.y+30,o.w-40,o.h-60);ctx.beginPath();ctx.moveTo(o.x+o.w/2,o.y+30);ctx.lineTo(o.x+o.w/2,o.y+o.h-30);ctx.stroke()}text(o.n,o.x+o.w/2,o.y+o.h/2, o.n.length>15?10:13)}});
+ buildings.forEach(drawBuilding);
+ // Solid boundary wall blocks the shortcut behind C Block while leaving Exit 3 accessible.
+ barriers.forEach(b=>{ctx.fillStyle='#9b8056';ctx.fillRect(b.x,b.y,b.w,b.h);ctx.fillStyle='#c9b185';ctx.fillRect(b.x,b.y,b.w,8);for(let yy=b.y+24;yy<b.y+b.h;yy+=34){ctx.fillStyle='#876d49';ctx.fillRect(b.x+5,yy,b.w-10,3)}});
+ // main entrance and college wall/gate
+ ctx.fillStyle='#9c8055';ctx.fillRect(325,1120,155,10);ctx.fillRect(325,1120,12,45);ctx.fillRect(468,1120,12,45);ctx.fillStyle='#f6f1cf';ctx.fillRect(337,1120,131,7);text('ENTRANCE GATE',402,1165,12);
+ trees.forEach(drawTree);
+ // exits
+ exits.forEach(e=>{ctx.fillStyle='#56dca0';ctx.strokeStyle='#167b59';ctx.lineWidth=3;ctx.fillRect(e.x,e.y,e.w,e.h);ctx.strokeRect(e.x,e.y,e.w,e.h);text(e.n,e.x+e.w/2,e.y+e.h/2,13,'#104c39')});
+ // security marks
+ security.forEach(s=>{ctx.fillStyle='#232e32';ctx.beginPath();ctx.arc(s.x,s.y,11,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(s.x-6,s.y-6);ctx.lineTo(s.x+6,s.y+6);ctx.moveTo(s.x+6,s.y-6);ctx.lineTo(s.x-6,s.y+6);ctx.stroke();text('SECURITY',s.x,s.y+21,9,'#23362d')});
+}
+function drawPerson(x,y,label,color,r=13){
+ ctx.fillStyle='#ffffffdd';ctx.beginPath();ctx.arc(x,y,r+5,0,Math.PI*2);ctx.fill();
+ ctx.fillStyle=color;ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();
+ ctx.fillStyle='#f2c79c';ctx.beginPath();ctx.arc(x,y-r-3,r*.48,0,Math.PI*2);ctx.fill();
+ // Dark, high-contrast staff label with a pale rounded backing.
+ ctx.font='900 15px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';
+ const tw=ctx.measureText(label).width, lx=x-tw/2-7, ly=y-r-39;
+ ctx.fillStyle='#fff9e8';ctx.strokeStyle='#8b795c';ctx.lineWidth=1.5;
+ ctx.beginPath();ctx.roundRect(lx,ly,tw+14,23,7);ctx.fill();ctx.stroke();
+ ctx.fillStyle='#26382d';ctx.fillText(label,x,ly+11.5);
+}
+function drawPlayer(){// blue-striped uniform
+ctx.fillStyle='#173b2d66';ctx.beginPath();ctx.ellipse(player.x,player.y+13,17,7,0,0,Math.PI*2);ctx.fill();
+ctx.fillStyle='#246cba';ctx.beginPath();ctx.roundRect(player.x-12,player.y-12,24,25,5);ctx.fill();
+ctx.strokeStyle='#d8f2ff';ctx.lineWidth=2;for(let x=-7;x<=7;x+=5){ctx.beginPath();ctx.moveTo(player.x+x,player.y-10);ctx.lineTo(player.x+x,player.y+10);ctx.stroke()}
+ctx.fillStyle='#e4b48b';ctx.beginPath();ctx.arc(player.x,player.y-15,8,0,Math.PI*2);ctx.fill();ctx.fillStyle='#2d2b28';ctx.beginPath();ctx.arc(player.x,player.y-19,8,Math.PI,Math.PI*2);ctx.fill();
+}
+function render(){const v=world();updateCamera();ctx.clearRect(0,0,v.w,v.h);ctx.save();ctx.translate(camX,camY);ctx.scale(camScale,camScale);drawMap();
+[...guards,...exitPatrols].forEach(g=>{let dx=player.x-g.x,dy=player.y-g.y,dist=Math.hypot(dx,dy);ctx.fillStyle=dist<g.sight?'#ff33335c':'#ffb74720';ctx.beginPath();ctx.arc(g.x,g.y,g.sight,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#e99c57';ctx.lineWidth=2;ctx.setLineDash([5,5]);ctx.beginPath();ctx.arc(g.x,g.y,g.sight,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);drawPerson(g.x,g.y,g.name,g.color,15)});
+ security.forEach(s=>{let d=Math.hypot(player.x-s.x,player.y-s.y);ctx.fillStyle=d<48?'#ff24244f':'#ffb22b24';ctx.beginPath();ctx.arc(s.x,s.y,48,0,Math.PI*2);ctx.fill()});
+ drawPlayer();ctx.restore();drawMini()}
+function drawMini(){if(!mctx)return;mctx.clearRect(0,0,216,284);mctx.fillStyle='#cde7a6';mctx.fillRect(0,0,216,284);mctx.save();mctx.scale(216/W,284/H);
+ buildings.forEach(b=>{mctx.fillStyle='#d8bd85';mctx.fillRect(b.x,b.y,b.w,b.h)});grounds.forEach(o=>{mctx.fillStyle='#91c87a';mctx.fillRect(o.x,o.y,o.w,o.h)});exits.forEach(e=>{mctx.fillStyle='#2fc78d';mctx.fillRect(e.x,e.y,e.w,e.h)});trees.forEach(t=>{mctx.fillStyle='#43884b';mctx.fillRect(t.x,t.y,8,8)});security.forEach(s=>{mctx.fillStyle='#111';mctx.fillRect(s.x-5,s.y-5,10,10)});barriers.forEach(b=>{mctx.fillStyle='#8b6d48';mctx.fillRect(b.x,b.y,b.w,b.h)});[...guards,...exitPatrols].forEach(g=>{mctx.fillStyle=g.color;mctx.beginPath();mctx.arc(g.x,g.y,9,0,7);mctx.fill()});mctx.fillStyle='#1976d2';mctx.beginPath();mctx.arc(player.x,player.y,13,0,7);mctx.fill();mctx.restore()}
+function getAudio(){try{audio=audio||new (window.AudioContext||window.webkitAudioContext)();if(audio.state==='suspended')audio.resume();return audio}catch(e){return null}}
+function tone(freq,duration=.18,type='sine',volume=.07,delay=0){if(!soundOn)return;const a=getAudio();if(!a)return;try{const o=a.createOscillator(),g=a.createGain(),t=a.currentTime+delay;o.type=type;o.frequency.setValueAtTime(freq,t);g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(volume,t+.025);g.gain.exponentialRampToValueAtTime(.0001,t+duration);o.connect(g);g.connect(a.destination);o.start(t);o.stop(t+duration+.02)}catch(e){}}
+function playWhistle(){if(!soundOn)return;tone(1800,.22,'sine',.12);tone(1250,.32,'sine',.09,.16)}
+// A small original synthesized looping theme; no external audio files or network required.
+function musicTick(){if(!soundOn)return;const melody=[261.63,329.63,392,329.63,293.66,349.23,440,392,261.63,329.63,392,523.25,440,392,329.63,293.66];const i=musicStep++%melody.length;tone(melody[i],.24,'triangle',.026);if(i%4===0)tone(melody[i]/2,.32,'sine',.018,.01)}
+function playWinCue(){if(!soundOn)return;[523.25,659.25,783.99,1046.5].forEach((f,i)=>tone(f,.34,'triangle',.09,i*.11))}
+function playCaughtCue(){if(!soundOn)return;[220,185,146.83].forEach((f,i)=>tone(f,.28,'sawtooth',.075,i*.14));playWhistle()}
+function endGame(win,reason=''){if(!running)return;running=false;toast.classList.remove('hidden');if(win){playWinCue();let score=Math.max(0,Math.round(10000/(elapsed+4)*10)/10);winBest=Math.min(winBest,elapsed);toast.innerHTML=`<h2>🎉 You escaped!</h2><div class="meme win">Abba sai ramm 🙏🏻</div><p>Exit reached in <b>${elapsed.toFixed(1)} seconds</b>.<br>Escape score: <b>${Math.round(score)}</b><br>${score>1000?'Lightning-fast escape!':score>500?'Great run!':'Try a faster route for a higher score.'}</p><button id="nextBtn">Next Level (${level+1})</button> <button id="againBtn">Replay</button>`;document.getElementById('nextBtn').onclick=()=>{level++;startLevel()};document.getElementById('againBtn').onclick=()=>startLevel()}else{playCaughtCue();toast.innerHTML=`<h2>🚨 Caught!</h2><div class="meme">Management: chaduvukondi firstuu 💥</div><p>${reason||'A staff member spotted you.'} You were suspended. Try another route and watch the detection rings.</p><button id="retryBtn">Try Again</button>`;document.getElementById('retryBtn').onclick=()=>startLevel()}}
+function startLevel(){toast.classList.add('hidden');player.x=400;player.y=1175;elapsed=0;musicStep=0;startTime=performance.now();started=running=true;guards.length=0;const defs=[['A.O. SIR',650,805,0,'#8c4e9c'],['HOD SIR',520,600,2,'#c76b35'],['REHM SIR',550,335,4,'#b84d48']];defs.forEach((d,i)=>guards.push({name:d[0],x:d[1],y:d[2],baseX:d[1],baseY:d[2],phase:d[3],range:105,sight:level>=3?82:level>=2?74:66,color:d[4]}));for(let i=0;i<Math.min(level-1,5);i++){const name=extraStaffNames[i]||('STAFF '+(i+1)+' SIR');guards.push({name,x:300+i*65,y:900-i*125,baseX:300+i*65,baseY:900-i*125,phase:i*1.4,range:80,sight:level>=4?65:48,color:'#4f6879'})}exitPatrols.forEach((g,i)=>{g.x=g.baseX;g.y=g.baseY;g.phase=[0,1.8,3.4][i]});security.forEach(s=>{s.active=true});document.getElementById('level').textContent='Level '+level;document.getElementById('status').textContent='Reach any exit';last=performance.now();getAudio();requestAnimationFrame(loop)}
+function collidesBuilding(x,y){
+ return buildings.some(b=>x+player.r>b.x&&x-player.r<b.x+b.w&&y+player.r>b.y&&y-player.r<b.y+b.h)||barriers.some(b=>x+player.r>b.x&&x-player.r<b.x+b.w&&y+player.r>b.y&&y-player.r<b.y+b.h);
+}
+function segmentHitsRect(x1,y1,x2,y2,r){
+ // Sample the sight line at small intervals; walls/buildings block staff vision.
+ const steps=24;
+ for(let i=1;i<steps;i++){const t=i/steps,x=x1+(x2-x1)*t,y=y1+(y2-y1)*t;
+  if(x>=r.x&&x<=r.x+r.w&&y>=r.y&&y<=r.y+r.h)return true;
+ }return false;
+}
+function isOccluded(x1,y1,x2,y2){return buildings.some(b=>segmentHitsRect(x1,y1,x2,y2,b));}
+function loop(now){if(!running)return;let dt=Math.min((now-last)/1000,.04);last=now;elapsed=(now-startTime)/1000;document.getElementById('timer').textContent='Time: '+elapsed.toFixed(1)+'s';document.getElementById('best').textContent='Best: '+(winBest===Infinity?'—':winBest.toFixed(1)+'s');
+if(running)security.forEach(s=>{if(s.active&&Math.hypot(player.x-s.x,player.y-s.y)<58)endGame(false,'A security guard caught you!')});
+if(running)[...guards,...exitPatrols].forEach(g=>{g.x=g.baseX+Math.cos(now/1150+g.phase)*g.range;g.y=g.baseY+Math.sin(now/1450+g.phase)*g.range*.48;let d=Math.hypot(player.x-g.x,player.y-g.y);if(d<g.sight+player.r&&!isOccluded(g.x,g.y,player.x,player.y)){if(now-lastWhistle>900){playWhistle();lastWhistle=now}endGame(false,g.isSecurity?g.name+' caught you near an exit!':g.name+' spotted you!');}});
+if(running){let ix=joy.x+(keys.ArrowRight||keys.d?1:0)-(keys.ArrowLeft||keys.a?1:0),iy=joy.y+(keys.ArrowDown||keys.s?1:0)-(keys.ArrowUp||keys.w?1:0),len=Math.hypot(ix,iy)||1;
+let nx=Math.max(18,Math.min(W-18,player.x+ix/len*player.speed*dt)),ny=Math.max(18,Math.min(H-18,player.y+iy/len*player.speed*dt));
+if(!collidesBuilding(nx,player.y))player.x=nx;
+if(!collidesBuilding(player.x,ny))player.y=ny;
+if(exits.some(e=>player.x>e.x-8&&player.x<e.x+e.w+8&&player.y>e.y-8&&player.y<e.y+e.h+8))endGame(true);
+if(soundOn&&Math.floor(elapsed*2)!==Math.floor((elapsed-dt)*2))musicTick();render();if(running)requestAnimationFrame(loop)}}
+document.getElementById('startBtn').onclick=startLevel;
+document.getElementById('soundBtn').onclick=()=>{soundOn=!soundOn;document.getElementById('soundBtn').textContent='♫ Sound: '+(soundOn?'ON':'OFF');if(soundOn){getAudio();musicTick()}};
+document.getElementById('zoomIn').onclick=()=>{camScale=Math.min(camScale*1.18,1.55);updateCamera()};
+document.getElementById('zoomOut').onclick=()=>{camScale=Math.max(camScale/1.18,.24);updateCamera()};
+document.getElementById('resetView').onclick=()=>{panX=0;panY=0;fitCam()};
+// Drag anywhere on the map to look around. The camera still follows the student, but this offset
+// lets players inspect nearby campus areas manually.
+canvas.addEventListener('pointerdown',e=>{if(e.target===canvas){dragPan=true;dragStart={x:e.clientX,y:e.clientY,px:panX,py:panY};canvas.setPointerCapture(e.pointerId)}});
+canvas.addEventListener('pointermove',e=>{if(dragPan&&dragStart){panX=dragStart.px+(e.clientX-dragStart.x);panY=dragStart.py+(e.clientY-dragStart.y);updateCamera()}});
+function stopPan(){dragPan=false;dragStart=null}
+canvas.addEventListener('pointerup',stopPan);canvas.addEventListener('pointercancel',stopPan);
+window.addEventListener('resize',resize);window.addEventListener('keydown',e=>{keys[e.key]=true;if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key))e.preventDefault()});window.addEventListener('keyup',e=>keys[e.key]=false);
+const joyEl=document.getElementById('joystick'),stick=document.getElementById('stick');
+function moveJoy(e){let r=joyEl.getBoundingClientRect(),dx=e.clientX-(r.left+r.width/2),dy=e.clientY-(r.top+r.height/2),max=r.width*.32,l=Math.hypot(dx,dy)||1;dx*=Math.min(1,max/l);dy*=Math.min(1,max/l);joy.x=dx/max;joy.y=dy/max;stick.style.transform=`translate(${dx}px,${dy}px)`}
+joyEl.addEventListener('pointerdown',e=>{joyActive=true;joyEl.setPointerCapture(e.pointerId);moveJoy(e)});joyEl.addEventListener('pointermove',e=>{if(joyActive)moveJoy(e)});function endJoy(){joyActive=false;joy.x=joy.y=0;stick.style.transform='translate(0,0)'}joyEl.addEventListener('pointerup',endJoy);joyEl.addEventListener('pointercancel',endJoy);
+resize();camScale=Math.max(camScale,.52);updateCamera();render();
+})();
+</script></body></html>
